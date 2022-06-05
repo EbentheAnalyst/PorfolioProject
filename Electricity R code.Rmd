@@ -1,0 +1,198 @@
+---
+title: "Code for figures and models"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+library(readxl)
+library(ggplot2)
+library(stargazer)
+library(knitr)
+library(dplyr)
+
+windowsFonts(A = windowsFont("Garamond"))
+theme_set(theme_classic(base_size = 12,  base_family="A"))
+```
+
+## Reading the data
+
+The code chunk below pulls in the numbers from the EXCEL file.  The variable names are the long form of the questions - so, below, I created a couple of shorter variable names to work with in document.
+
+```{r data}
+data<- read_excel("C:\\Users\\Nana Ama\\Desktop\\Trials\\Rstudio\\surveyer.xlsx")
+```
+
+### Measuring Electricity service satisfaction
+
+The survey data from 2020 includes seven questions related to Electricity:
+
+Two questions were recoded below so that the highest number is satisfied or strongly agree:
+
+If “YES”, how often per week?(Read out options)(original coding: 1=Never.....4=Always) (n~300)
+Is provincial delivery equitable across municipalities? (original coding: 1 strongly agree, 4 strongly disagree, 5 is Don't Know (125))
+
+New variables:
+Electricity access: 1=unsatisfied...4=satisfied
+Electricity equity: 1=strongly disagree.....4=strongly agree
+
+Recoded to dummy variable:
+- Is Electricity one of "the most important problems that this country faces that the government should resolve?"  (45/531 mention) (recoded to dummy 0=no 1=mentioned)
+
+Not used:
+Do you have electricity? (1= Yes, 2=No)
+Who provides your electricity? (1=Government, 2=Sometimes, 3=Very Often, 4=Always)
+Do you pay for electricity? (1=Yes, 2=No)
+If “YES”, how much do you pay per month?	(Insert amount in kwanzas)
+
+```{r recode_electricity}
+# Seven questions related to Electricity:
+
+#If “YES”, how often per week?(Read out options)(original coding: 1=Never.....4=Always) (n~300)
+#Is provincial delivery equitable across municipalities? (original coding: 1 strongly agree, 4 strongly disagree, 5 is Don't Know (125))
+
+#Do you have electricity? (1= Yes, 2=No)
+#Who provides your electricity? (1=Government, 2=Sometimes, 3=Very Often, 4=Always)
+#Do you pay for electricity? (1=Yes, 2=No)
+#If “YES”, how much do you pay per month?	(Insert amount in kwanzas)
+
+# Is Electricity one of "the most important problems that this country faces that the government should resolve?"  (45/531 mention) (recoded to dummy 0=no 1=mentioned)
+
+
+# Recodes 5-response so 4 becomes 1 and 1 becomes 4...
+data <-data %>%
+ mutate(electricity_access=5-data$`63)If “YES”, how often per week? (Read out options)`, 
+        electricity_equity=5-data$`83) Do you agree or disagree with the statement: Over president dos Santos post-civil war period, that is, from 2002 to 2017, your provincial government delivered electricity across municipalities regardless of political affiliation? (Read out options)`,
+         electricity_problem=data$`87) Electricity  ( In your opinion, what are the most important problems that this country faces that the government should resolve? (Write up to 3 problems))`
+        ) 
+data <- data %>%
+  mutate(problem.dummy = if_else(data$electricity_problem==9, 1, 0, 0))
+```
+
+The code chunk below recodes or identifies the variables:
+
+- ethnicity
+- province
+- party
+- neighborhood is central city or slum 
+
+```{r recode_invididual}
+# Ethnicity
+# Province
+# Party
+# Neighborhood - to construct urban vs. other
+
+data$ethnicity<-data$`88) What is your ethnic group?`
+
+data$party<-data$`90) If “YES”, which party is that?`
+# Note that most of these are missing - respondent doesn't feel close to a party.
+
+# I make the party a factor - meaning labels rather than numbers - are the labels attached to the correct numbers? 1=MPLA 2=UNITA, 7=some other party names...the number in parentheses is the number of people picking that party.
+data$party<- factor(data$party,
+levels = c(1,2,3,4,5,7), ordered=FALSE,
+labels = c("MPLA (136)", "UNITA (46)", "CASE-CE (14)", "PRS (6)", "FNLA (4)", "Other (32)"))
+
+# Province is available (5 provinces, already factor)
+data$Province<-factor(data$Province, levels = c("Luanda", "Bengo", "Benguela", "Lunda Norte", "Malanje"))
+
+# Central city vs slum
+data<- data %>% mutate(slum=recode(Neigborhood, 
+                                   "Centralidade do 44"=0,
+                                   "Sanzala Grande" = 1,
+                                   "Desvio" = 1,
+                                   "Estação 44"=1,
+                                   "Centralidade de Capari" =0,
+                                   "Musseque Capari" = 1,
+                                   "Musseque kikoca" =1,
+                                   "Centralidade do Lobito" =0,
+                                   "Lixeira"=1,
+                                   "4 de Fevereiro"=1,
+                                   "Downtown"= 0,
+                                   "Centro da cidade"=0 ,
+                                   "Cangambo ocidental"=0,
+                                   "Bela fama"=1,
+                                   "Camoma"=1,
+                                   "Cafuco-fuco"=1,
+                                   "Carreira de tiro"=1,
+                                   "Centralidade do Mussungue"=0,
+                                   "Samacaca"=0,
+                                   "Estufa"=1,
+                                   "Camaquenzo 2"=1,
+                                   "Caita"=1))
+
+```
+
+### Service delivery: core compared to slums
+
+The figures below measure satisfaction with Electricity services, comparing residents of slums to other urban residents - based on how satisfied people are with electricity services.(Higher scores indicate more satisfied)
+
+All of the figures and models below use the "Electricity access" variable created from question 63.  You can create other water, housing or other measures using the same approach and update the figures with those measures
+
+
+```{r figure1, warning=FALSE, echo=TRUE, message=FALSE}
+# Facet labels
+place_names <- as_labeller(     c(`0` = "Urban center", `1` = "Slum"))
+# The names above are used in the "facet_wrap" below
+# if you delete the facet_wrap line you just get one plot by province
+
+# This is the command to make the plot
+ggplot (data, aes(x=Province, y=electricity_access))+
+  geom_bar(stat = "summary", fun = "mean", fill="lightblue", color="red") +
+  ylab("Service access, Electricity")+
+  xlab("Province")+ 
+  facet_wrap(data$slum, labeller=place_names) +
+  ggtitle("Electricity access, by province and place") 
+```
+```{r}
+ggplot (data, aes(x=Province, y=electricity_equity))+
+  geom_bar(stat = "summary", fun = "mean", fill="lightblue", color="red") +
+  ylab("Service equity, Electricity")+
+  xlab("Province")+ 
+  facet_wrap(data$slum, labeller=place_names) +
+  ggtitle("Electricity equity, by province and place") 
+```
+
+
+### Service delivery and province
+
+```{r figure2, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot (data, aes(x=Province, y=electricity_access))+
+  geom_bar(stat = "summary", fun = "mean", fill="lightblue", color="red") +
+  ylab("Service quality, Electricity")+
+  xlab("Province")+
+  ggtitle("Electricity access, by province") 
+```
+
+## Service delivery and political affiliation
+
+The factor labels show the party name and number of people who are in that party in the sample. NA means no party preference given.
+
+There doesn't seem to be any meaningful variation. 
+
+```{r figure3, warning=FALSE, echo=TRUE, message=FALSE}
+ggplot (data, aes(x=party, y=electricity_access))+
+  geom_bar(stat = "summary", fun = "mean", fill="lightblue", color="red") +
+  ylab("Service quality, Electricity")+
+  xlab("party")+
+  ggtitle("Electricity access, by party") 
+```
+
+## Models to confirm 
+
+The model just uses the political party, slum vs central, and  province, jointly, to estimate impacts on satisfaction
+
+Positive coefficients in the first table indicate higher levels of satisfaction.  
+
+Party and province don't matter for Electricity access, only slum vs. central city.
+
+The baseline categories for party is the MPLA and the baseline category for province is Luanda
+
+```{r model1, warning=FALSE, comment=""}
+model1<-lm(electricity_access~party+Province+slum, data=data)
+model2<-lm(electricity_equity~party+Province+slum, data=data)
+stargazer(model1,model2,type="text", style="apsr")
+```
+
+
+
